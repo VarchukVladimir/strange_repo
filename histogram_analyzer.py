@@ -8,6 +8,7 @@ import operator
 import sys
 import os
 import subprocess
+import shutil
 #import numpy as np
 #from matplotlib import pyplot as plt
 
@@ -58,16 +59,18 @@ def get_histogram_directory(path):
     hist_array = {'fnames':[], 'values':[]}
     for f in sorted(listdir(path)):
         f_count = f_count + 1
-        if f_count == 500:
-            break
+#set limit of files to 500 for testing it tajes a long time
+        # if f_count == 500:
+        #     break
         if f_count % step == 0:
-            print(f_count, 'from', total_files)
+            print(' '.join([str(f_count), 'of', str(total_files), '...']))
         full_name = join(path, f)
         if isfile(full_name):
             hist_val = int(trunc_val(get_image_histogram(cv2.imread(full_name))))
             #hist_array.append({full_name:hist_val})
             hist_array['fnames'].append(full_name)
             hist_array['values'].append(hist_val)
+    print('[DONE]')
     return hist_array
 
 
@@ -119,84 +122,134 @@ def check_range(check_list, startpos, num_elements, criteria, criteria_count, cm
         return False
 
 def make_video(pattern, path_to_save, frame_rate_normal, frame_rate_slow):
-    if not os.path.exists(images_path):
-        os.makedirs(images_path)
-    cmd = ['ffmpeg', '-r', str(frame_rate_normal), '-y', '-i', '/'.join(path_to_save.split('/')[:-1])+'/jpg/'+pattern+'_*.jpg', path_to_save+'/'+pattern+'_normal.mpg']
-    print(cmd)
+    if not os.path.exists(path_to_save):
+        os.makedirs(path_to_save)
+    print('pattern ' + pattern)
+    cmd = ['ffmpeg', '-r', str(frame_rate_normal), '-y', '-pattern_type', 'glob', '-i', '/'.join(path_to_save.split('/')[:-1])+'/af_jpg/'+pattern+'_af_*.jpg', '-c:v', 'copy', path_to_save+'/'+pattern+'_normal.avi']
     exec_subproc(cmd)
-    cmd = ['ffmpeg', '-r', str(frame_rate_slow), '-y', '-i', '/'.join(path_to_save.split('/')[:-1])+'/jpg/'+path_to_save+'/'+pattern+'_lf*.jpg', path_to_save+'/'+pattern+'_slow.mpg']
+    cmd = ['ffmpeg', '-r', str(frame_rate_slow), '-y', '-pattern_type', 'glob', '-i', '/'.join(path_to_save.split('/')[:-1])+'/af_jpg/'+pattern+'_lf_*.jpg', '-c:v', 'copy', path_to_save+'/'+pattern+'_slow.avi']
     exec_subproc(cmd)
-    print(cmd)
 
-def exec_subproc(cmd):
+def exec_subproc(cmd, show_info=1):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = p.communicate()
-    for lines in out.splitlines():
-        print('\t', lines)
+    if show_info:
+        if p.returncode == 0:
+            print( '[OK] ' + ' '.join(cmd))
+        else:
+            print( ' [ERROR] ' + ' '.join(cmd))
+            print(err)
+    # for lines in out.splitlines():
+    #     print('\t', lines)
     return p.returncode
 
+def save_histogram_list(hist, save_path):
+    f = open(save_path+'/histogram.csv' ,'w')
+    for i in range(len(hist['fnames'])):
+        str_line = hist['fnames'][i] +'\t'+ str(hist['values'][i])+'\n'
+        f.write(str_line)
+    f.close()
+
+def load_histogram_list(load_path):
+    hists = {'fnames':[], 'values':[]}
+    f = open(load_path ,'r')
+    lines = f.readlines()
+    for line in lines:
+        elem = line.split('\t')
+        if len(elem) == 2:
+            hists['fnames'].append(elem[0])
+            hists['values'].append(int(elem[1]))
+    #print(hists['fnames'])
+    #print(hists['values'])
+    f.close()
+    return hists
+
+#hists = load_histogram_list()
 
 if len(sys.argv) > 1:
     video_path = sys.argv[1]
-    print('video ', video_path)
+    load_histogram = 0
+    if len(sys.argv) == 3:
+        if sys.argv[2] == '-h':
+            load_histogram = 1
+    print('video ' + video_path)
     w = '/'.join( video_path.split('/')[:-1])
     f_name = video_path.split('/')[-1]
 
     w_path = '/'.join([w, f_name.split('.')[0]])
-    print(w_path)
-    if not os.path.exists(w_path):
-        os.makedirs(w_path)
+    af_path = w_path + '/af_jpg'
+    print('working path ' + w_path)
+    #if save_path+'histogram.csv'
     images_path = w_path+'/jpg'
+    if not load_histogram:
+        if not os.path.exists(w_path):
+            os.makedirs(w_path)
+        else:
+            shutil.rmtree(w_path)
+            os.makedirs(w_path)
+        if not os.path.exists(images_path):
+            os.makedirs(images_path)
+        print('splitting into frames...')
+        cmd = ['time', 'ffmpeg', '-i', video_path, images_path+'/image%6d.jpg']
+        print(' '.join(cmd))
+#skip it for testing it takes a long time
+        exec_subproc(cmd)
+        print('getting histograms for frames...')
+        hists =get_histogram_directory(images_path)
+        print('saving histogram...')
+        save_histogram_list(hists, w_path)
+    else:
+        hists = load_histogram_list(w_path+'/histogram.csv')
+    if not os.path.exists(af_path):
+        os.makedirs(af_path)
 
-    if not os.path.exists(images_path):
-        os.makedirs(images_path)
-    print('splitting into frames...')
-    cmd = ['ffmpeg', '-i', video_path, images_path+'/image%6d.jpg']
-    # if exec_subproc(cmd) <> 0:
-    #     exit(1)
-    print('getting histograms for frames...')
-    hists =get_histogram_directory(images_path)
+    print('getting most frequent element... ')
     most = most_common(hists['values'])
+    print('most_common ' + str(most))
+    print('getting frame rate... ')
     fps = int(round(get_frame_rate(video_path)))
-    treshold = get_threshold(most, 0.5)
-    most = round(most + most * 0.5)
+    print('fps ' + str(fps))
+    treshold = get_threshold(most, 2)
+    most = round(most + most * 2)
     most_pow = most * 2
-    print(hists['values'])
-    print(hists['fnames'])
-    print('most_common', most_common(hists))
-    print('fps', fps)
     episode_count = 0
     episode_list = []
     short_range_count = 0
-    short_range = 15
-    min_frames = 10
+    short_range = int(fps/4)
+    min_frames = int(short_range - short_range * 0.25)
     found = 0
     end_af = 0
+    print('finding lightnings...')
     for i in range(len(hists['fnames'])):
         if i % int(len(hists['fnames'])/10) == 0:
-            print (i, ' of ', len(hists['fnames']))
+            print ( ' '.join([str(i), ' of ', str(len(hists['fnames']))]))
         #detecting beginning of the range with flashes
-        if check_range(hists['values'], i, short_range, most, min_frames, 0):
-            start_lf = i
-            found = 1
+        if check_range(hists['values'], i, short_range, most, min_frames, 0) and not found:
+            if hists['values'][i] >= most:
+                start_lf = i
+                found = 1
         if check_range(hists['values'], i, short_range, most, min_frames, 1) and found:
-            end_lf = i
+            end_lf = i + short_range
             start_af = int(start_lf - fps * 2 if (start_lf - fps * 2) > 0 else 0)
-            end_af  = int(i + fps * 2 if (i + fps * 2) < len(hists['values']) else len(hists['fnames']))
+            end_af = int(i + fps * 2 if (i + fps * 2) < len(hists['values']) else len(hists['fnames']))
+            print(start_af, start_lf, end_af, end_lf)
             episode_count = episode_count + 1
-            episode_list.append( 'e_{eindex}'.format(eindex=episode_count) )
-            print(start_af, end_af, range(start_af, end_af))
+            episode_list.append('e_{eindex}'.format(eindex=episode_count))
+            #print(start_af, end_af, range(start_af, end_af))
             for j in range(start_af, end_af):
-                if j < start_lf and j > end_lf:
+                findex_str = hists['fnames'][j].split('/')[-1].split('.')[0][5:]
+                if j < start_lf or j > end_lf:
                     str_prefix = 'af'
                 else:
-                    str_prefix = 'lf'
-                findex_str = hists['fnames'][j].split('/')[-1].split('.')[0][5:]
-                new_fname = w_path+'/e_{eindex}_{str_prefix}_{findex}.jpg'.format(eindex=str(episode_count), str_prefix=str_prefix, findex=findex_str)
+                    new_fname = af_path + '/e_{eindex}_lf_{findex}.jpg'.format(eindex=str(episode_count),
+                                                                                    findex=findex_str)
+                    cmd = ['cp', hists['fnames'][j], new_fname]
+                    exec_subproc(cmd, 0)
+
+                new_fname = af_path + '/e_{eindex}_af_{findex}.jpg'.format(eindex=str(episode_count),
+                                                                                    findex=findex_str)
                 cmd = ['cp', hists['fnames'][j], new_fname]
-                exec_subproc(cmd)
-                #print(j,  hists['fnames'][j])
-                #print(cmd)
+                exec_subproc(cmd, 0)
             start_af = 0
             end_lf = 0
             start_lf = 0
@@ -205,8 +258,9 @@ if len(sys.argv) > 1:
             continue
         elif i == end_af:
             end_af = 0
+    print('making videos...')
+    print('total videos ' + str(len(episode_list)))
     for episode in episode_list:
-        print (episode)
         make_video(episode, w_path+'/video',int(fps),int(fps/5))
 
 

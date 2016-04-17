@@ -220,10 +220,10 @@ if len(sys.argv) > 1:
     video_path = sys.argv[1]
     load_histogram = 0
     cut_video = 0
-    if len(sys.argv) >= 3:
-        if sys.argv[2] == '-h':
+    for param in sys.argv:
+        if param == '-h':
             load_histogram = 1
-        if sys.argv[3] == '-c':
+        if param == '-c':
             cut_video = 1
 
     print('video ' + video_path)

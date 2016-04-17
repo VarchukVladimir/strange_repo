@@ -166,17 +166,56 @@ def load_histogram_list(load_path):
 
 #hists = load_histogram_list()
 
+def frame_number_to_time(frame_number, fps):
+    if fps <= 0:
+        return '00:00:00'
+    hour = 0
+    minutes = 0
+    sec = int(frame_number / fps)
+    if sec > 59:
+        minutes = int(sec / 60)
+        sec = sec - minutes * 60
+        if minutes > 59:
+            hour = int(minutes/60)
+            minutes = minutes - hour * 60
+    time_str = '{0:02d}:{1:02d}:{2:02d}'.format(hour,minutes,sec)
+    return time_str
+
+
+#print(frame_number_to_time(120, 60))
+# strn = '{0:02d}:{1:02d}:{2:02d}'.format(3,6,7)
+# print(strn)
+#exit(0)
+
+def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_type ):
+    tstart = frame_number_to_time(start_af, fps)
+    if end_frame - start_frame < fps:
+        tduration = '00:00:01'
+    else:
+        tduration = frame_number_to_time(end_frame - start_frame, fps)
+    video_short_name = video_path.split('/')[-1].split('.')[0]
+    w_path = '/'.join(video_path.split('/')[:-1]+[video_short_name])
+    episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.avi'])
+    cmd = ['ffmpeg', '-ss', tstart, '-t', tduration, '-i', video_path, '-vcodec', 'copy', '-acodec', 'copy',
+           episode_file_name]
+    return cmd
+
+
 if len(sys.argv) > 1:
     video_path = sys.argv[1]
     load_histogram = 0
-    if len(sys.argv) == 3:
+    cut_video = 0
+    if len(sys.argv) >= 3:
         if sys.argv[2] == '-h':
             load_histogram = 1
+        if sys.argv[3] == '-c':
+            cut_video = 1
+
     print('video ' + video_path)
     w = '/'.join( video_path.split('/')[:-1])
     f_name = video_path.split('/')[-1]
-
-    w_path = '/'.join([w, f_name.split('.')[0]])
+    video_short_name = f_name.split('.')[0]
+    w_path = '/'.join([w, video_short_name])
     af_path = w_path + '/af_jpg'
     print('working path ' + w_path)
     #if save_path+'histogram.csv'
@@ -236,20 +275,28 @@ if len(sys.argv) > 1:
             episode_count = episode_count + 1
             episode_list.append('e_{eindex}'.format(eindex=episode_count))
             #print(start_af, end_af, range(start_af, end_af))
-            for j in range(start_af, end_af):
-                findex_str = hists['fnames'][j].split('/')[-1].split('.')[0][5:]
-                if j < start_lf or j > end_lf:
-                    str_prefix = 'af'
-                else:
-                    new_fname = af_path + '/e_{eindex}_lf_{findex}.jpg'.format(eindex=str(episode_count),
-                                                                                    findex=findex_str)
+            if cut_video == 1:
+                #cmd = ffmpeg -ss start -t lenght -i in1.avi -vcodec copy -acodec copy out1.avi
+                cmd = get_cmd_cut(start_af,end_af,fps,video_path,episode_count, 'normal')
+                exec_subproc(cmd)
+                cmd = get_cmd_cut(start_lf,end_lf,fps,video_path,episode_count, 'slow')
+                exec_subproc(cmd)
+            else:
+                for j in range(start_af, end_af):
+                    findex_str = hists['fnames'][j].split('/')[-1].split('.')[0][5:]
+                    if j < start_lf or j > end_lf:
+                        str_prefix = 'af'
+                    else:
+                        new_fname = af_path + '/e_{eindex}_lf_{findex}.jpg'.format(eindex=str(episode_count),
+                                                                                        findex=findex_str)
+                        cmd = ['cp', hists['fnames'][j], new_fname]
+                        exec_subproc(cmd, 0)
+
+                    new_fname = af_path + '/e_{eindex}_af_{findex}.jpg'.format(eindex=str(episode_count),
+                                                                                        findex=findex_str)
                     cmd = ['cp', hists['fnames'][j], new_fname]
                     exec_subproc(cmd, 0)
 
-                new_fname = af_path + '/e_{eindex}_af_{findex}.jpg'.format(eindex=str(episode_count),
-                                                                                    findex=findex_str)
-                cmd = ['cp', hists['fnames'][j], new_fname]
-                exec_subproc(cmd, 0)
             start_af = 0
             end_lf = 0
             start_lf = 0
@@ -260,8 +307,9 @@ if len(sys.argv) > 1:
             end_af = 0
     print('making videos...')
     print('total videos ' + str(len(episode_list)))
-    for episode in episode_list:
-        make_video(episode, w_path+'/video',int(fps),int(fps/5))
+    if not cut_video:
+        for episode in episode_list:
+            make_video(episode, w_path+'/video',int(fps),int(fps/5))
 
 
 

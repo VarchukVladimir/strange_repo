@@ -182,10 +182,25 @@ def frame_number_to_time(frame_number, fps):
     return time_str
 
 
-#print(frame_number_to_time(120, 60))
-# strn = '{0:02d}:{1:02d}:{2:02d}'.format(3,6,7)
-# print(strn)
-#exit(0)
+def get_working_path(path):
+    return '/'.join(path.split('/')[:-1] + [get_short_name(path)])
+
+
+def get_jpg_path(path):
+    return '/'.join([get_working_path(path)] + ['jpg'])
+
+
+def get_af_path_path(path):
+    return '/'.join([get_working_path(path)] + ['af_jpg'])
+
+
+def get_video_path(path):
+    return '/'.join([get_working_path(path)] + ['video'])
+
+
+def get_short_name(path):
+    return path.split('/')[-1].split('.')[0]
+
 
 def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_type ):
     tstart = frame_number_to_time(start_af, fps)
@@ -193,9 +208,9 @@ def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_ty
         tduration = '00:00:01'
     else:
         tduration = frame_number_to_time(end_frame - start_frame, fps)
-    video_short_name = video_path.split('/')[-1].split('.')[0]
-    w_path = '/'.join(video_path.split('/')[:-1]+[video_short_name])
-    episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.avi'])
+    video_short_name = get_short_name(video_path)
+    w_path = get_working_path(video_path)
+    episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.mkv'])
     cmd = ['ffmpeg', '-ss', tstart, '-t', tduration, '-i', video_path, '-vcodec', 'copy', '-acodec', 'copy',
            episode_file_name]
     return cmd
@@ -212,14 +227,12 @@ if len(sys.argv) > 1:
             cut_video = 1
 
     print('video ' + video_path)
-    w = '/'.join( video_path.split('/')[:-1])
-    f_name = video_path.split('/')[-1]
-    video_short_name = f_name.split('.')[0]
-    w_path = '/'.join([w, video_short_name])
-    af_path = w_path + '/af_jpg'
+    video_short_name = get_short_name(video_path)
+    w_path = get_working_path(video_path)
+    af_path = get_af_path_path(video_path)
     print('working path ' + w_path)
     #if save_path+'histogram.csv'
-    images_path = w_path+'/jpg'
+    images_path = get_jpg_path(video_path)
     if not load_histogram:
         if not os.path.exists(w_path):
             os.makedirs(w_path)
@@ -274,9 +287,7 @@ if len(sys.argv) > 1:
             print(start_af, start_lf, end_af, end_lf)
             episode_count = episode_count + 1
             episode_list.append('e_{eindex}'.format(eindex=episode_count))
-            #print(start_af, end_af, range(start_af, end_af))
             if cut_video == 1:
-                #cmd = ffmpeg -ss start -t lenght -i in1.avi -vcodec copy -acodec copy out1.avi
                 cmd = get_cmd_cut(start_af,end_af,fps,video_path,episode_count, 'normal')
                 exec_subproc(cmd)
                 cmd = get_cmd_cut(start_lf,end_lf,fps,video_path,episode_count, 'slow')
@@ -309,7 +320,7 @@ if len(sys.argv) > 1:
     print('total videos ' + str(len(episode_list)))
     if not cut_video:
         for episode in episode_list:
-            make_video(episode, w_path+'/video',int(fps),int(fps/5))
+            make_video(episode, get_video_path(video_path),int(fps),int(fps/5))
 
 
 

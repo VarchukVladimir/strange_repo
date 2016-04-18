@@ -160,8 +160,6 @@ def load_histogram_list(load_path):
         if len(elem) == 2:
             hists['fnames'].append(elem[0])
             hists['values'].append(int(elem[1]))
-    #print(hists['fnames'])
-    #print(hists['values'])
     f.close()
     return hists
 
@@ -214,7 +212,7 @@ def get_video_name(path):
 
 
 def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_type ):
-    tstart = frame_number_to_time(start_af, fps)
+    tstart = frame_number_to_time(start_frame, fps)
     if end_frame - start_frame < fps:
         tduration = frame_number_to_time(fps, fps)
     else:
@@ -222,33 +220,9 @@ def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_ty
     video_short_name = get_short_name(video_path)
     w_path = get_working_path(video_path)
     episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.mkv'])
-    # cmd = ['ffmpeg', '-ss', str(start_frame), '-t', str(end_frame), '-i', video_path, '-vcodec', 'copy', '-acodec', 'copy',
-    #        episode_file_name]
     cmd = ['ffmpeg', '-i', video_path, '-ss', tstart, '-t', tduration, '-vcodec', 'copy', '-acodec', 'copy',
            episode_file_name]
     return cmd
-
-
-# for i in range(1,86):
-#     img_name = '/home/volodymyr/video/image{index}.jpg'.format(index=str(i))
-#     #print(img_name)
-#     plot_name = '/home/volodymyr/video/hist/image{index}.png'.format(index=str(i))
-#     img = cv2.imread(img_name)
-#     print( 'image{ind}.jpg\t{hist_val}'.format(ind=str(i), hist_val = str(get_image_histogram(img)) ))
-#
-#    plt.clf()
-#     hist = []
-#     for j,col in enumerate(color):
-#         hist.append(cv2.calcHist([img],[j],None,[256],[0,256]))
-#     histr = [ (hist[0][k] + hist[1][k] + hist[2][k] ) for k in range(len(hist[0])) ]
-#     #crc_hist = sum(histr)
-#     summ = 0
-#     for j in range(len(histr)):
-#         summ =+ histr[j][0]
-#     print( 'image{ind}.jpg\t{hist_val}'.format(ind=str(i), hist_val = str(summ/len(histr)) ))
-#     plt.plot(histr,color = col)
-#     plt.xlim([0,256])
-#     plt.savefig(plot_name)
 
 
 
@@ -286,7 +260,6 @@ if len(sys.argv) > 1:
         print('splitting into frames...')
         cmd = ['time', 'ffmpeg', '-i', video_path, images_path+'/image%6d.jpg']
         print(' '.join(cmd))
-#skip it for testing it takes a long time
         exec_subproc(cmd)
         print('getting histograms for frames...')
         hists =get_histogram_directory(images_path)
@@ -300,6 +273,9 @@ if len(sys.argv) > 1:
         os.makedirs(af_path)
     print('create dir for copying video fragments...')
     if not os.path.exists(get_video_path(video_path)):
+        os.makedirs(get_video_path(video_path))
+    else:
+        shutil.rmtree(get_video_path(video_path))
         os.makedirs(get_video_path(video_path))
 
 
@@ -330,8 +306,8 @@ if len(sys.argv) > 1:
         plt.grid(True)
         #plt.autoscale(enable=True,axis='both',tight=True)
         plot_save_path = '{0}/{1}.png'.format( w_path, get_short_name(video_path))
-        # if os._exists(plot_save_path)
-        #     shuti
+        if os._exists(plot_save_path):
+             os.remove(plot_save_path)
         plt.savefig(plot_save_path)
         if show_histogram:
             plt.show()
@@ -369,9 +345,9 @@ if len(sys.argv) > 1:
             episode_count = episode_count + 1
             episode_list.append('e_{eindex}'.format(eindex=episode_count))
             if cut_video == 1:
-                cmd = get_cmd_cut(start_af,end_af,fps,video_path,episode_count, 'normal')
+                cmd = get_cmd_cut(start_af+fps*2,end_af + fps*2, fps,video_path,episode_count, 'normal')
                 exec_subproc(cmd)
-                cmd = get_cmd_cut(start_lf,end_lf,fps,video_path,episode_count, 'slow')
+                cmd = get_cmd_cut(start_lf,end_lf+ fps*3, fps,video_path,episode_count, 'slow')
                 exec_subproc(cmd)
             else:
                 for j in range(start_af, end_af):
@@ -403,63 +379,4 @@ if len(sys.argv) > 1:
     if not cut_video:
         for episode in episode_list:
             make_video(episode, get_video_path(video_path),int(fps),int(fps/5))
-
-
-
-        # if i < end_episode_index:
-        #     continue
-        # if hists['values'][i] >= most or short_range_count:
-        #     if short_range_count == 0:
-        #         store_index = i
-        #     short_range_count =+ 1
-        #     if short_range_count >= min_frames and (i - store_index) >= short_range:
-        #         episode_count =+ 1
-        #         episode_list.append('/e_{eindex}'.format(eindex=str(episode_count)))
-        #
-        #         # detecting ending of the range with flashes
-        #         short_range_count = 0
-        #         end_episode_index = 0
-        #         for j in range(store_index, len(hists['fnames'])):
-        #             if hists['values'][j] < most or short_range_count:
-        #                 if short_range_count == 0:
-        #                     end_episode_index = j
-        #                 short_range_count =+ 1
-        #                 if short_range_count >= min_frames and (j - end_episode_index) >= short_range:
-        #                     break
-        #         if end_episode_index == 0:
-        #             end_episode_index = len(hists['fnames'])
-        #         #calculating ranges
-        #         start_af = store_index - fps * 2
-        #         end_af = end_episode_index + fps * 2 + 1
-        #         if end_af > len(hists['fnames']):
-        #             end_af = len(hists['fnames'])
-        #         if start_af <= 0:
-        #             start_af = 1
-        #
-        #         start_lf = store_index
-        #         end_lf = end_episode_index
-        #
-        #         #rename images
-        #         for j in range(start_af, end_af):
-        #             if j < start_lf and j > end_lf:
-        #                 str_prefix = 'af'
-        #             else:
-        #                 str_prefix = 'lf'
-        #             new_fname = w_path+'/e_{eindex}_{str_prefix}_{findex}'.format(eindex=str(episode_count), str_prefix=str_prefix, findex=j)
-        #             cmd = ['mv', hists['fnames'][i], new_fname]
-        #             print(cmd)
-#                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#                    out, err = p.communicate()
-#                     for lines in out.splitlines():
-#                         print('\t', lines)
-#                     if p.returncode <> 0:
-#                         print(err)
-#                         exit(1)
-#                 short_range_count = 0
-#             elif short_range_count < min_frames and (i - store_index) >= short_range:
-#                 short_range_count = 0
-
-        # else:
-        #     episode_list.append(0)
-    # print(episode_list)
 

@@ -216,13 +216,15 @@ def get_video_name(path):
 def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_type ):
     tstart = frame_number_to_time(start_af, fps)
     if end_frame - start_frame < fps:
-        tduration = '00:00:01'
+        tduration = frame_number_to_time(fps, fps)
     else:
         tduration = frame_number_to_time(end_frame - start_frame, fps)
     video_short_name = get_short_name(video_path)
     w_path = get_working_path(video_path)
     episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.mkv'])
-    cmd = ['ffmpeg', '-ss', tstart, '-t', tduration, '-i', video_path, '-vcodec', 'copy', '-acodec', 'copy',
+    # cmd = ['ffmpeg', '-ss', str(start_frame), '-t', str(end_frame), '-i', video_path, '-vcodec', 'copy', '-acodec', 'copy',
+    #        episode_file_name]
+    cmd = ['ffmpeg', '-i', video_path, '-ss', tstart, '-t', tduration, '-vcodec', 'copy', '-acodec', 'copy',
            episode_file_name]
     return cmd
 
@@ -254,14 +256,17 @@ if len(sys.argv) > 1:
     video_path = sys.argv[1]
     load_histogram = 0
     cut_video = 0
-    show_hstogram = 0
+    show_histogram = 0
+    make_plot = 0
     for param in sys.argv:
         if param == '-h':
             load_histogram = 1
         if param == '-c':
             cut_video = 1
         if param == 's':
-            show_hstogram = 1
+            show_histogram = 1
+        if param == '-p':
+            make_plot = 1
 
     print('video ' + video_path)
     video_short_name = get_short_name(video_path)
@@ -288,35 +293,48 @@ if len(sys.argv) > 1:
         print('saving histogram...')
         save_histogram_list(hists, w_path)
     else:
+        print('load histograms from {0}'.format(w_path+'/histogram.csv'))
         hists = load_histogram_list(w_path+'/histogram.csv')
+    print('create dir for copying image with lightnings...')
     if not os.path.exists(af_path):
         os.makedirs(af_path)
-    #making plot for distribution for video
+    print('create dir for copying video fragments...')
+    if not os.path.exists(get_video_path(video_path)):
+        os.makedirs(get_video_path(video_path))
 
-    plt.clf()
-    #y =
-    x = [ count for count in range(len(hists['values'])) ]
-    xlabels = []
-    mod_val = int(len(hists['values'])/5)
-    for count in range(len(hists['values'])):
-        if count % mod_val == 0:
-            #print(count, frame_number_to_time(count, 1))
-            xlabels.append(frame_number_to_time(count, 1))
-        else:
-            continue
-    print(xlabels)
-    #xlabels.append(frame_number_to_time(len(hists['values']), 1))
-    plt.xticks (x, xlabels, rotation='vertical')
-    plt.locator_params(axis='x', nbins=5)
-    plt.plot(x, hists['values'])
-    plt.xlabel('time (s)')
-    plt.ylabel('hist value')
-    plt.title('Video {0}'.format(get_video_name(video_path)))
-    plt.grid(True)
-    #plt.autoscale(enable=True,axis='both',tight=True)
-    plt.savefig('{0}/{1}.png'.format( w_path, get_short_name(video_path)))
-    if show_hstogram:
-        plt.show()
+
+    #making plot for distribution for video
+    if make_plot:
+        print('creating plot..')
+        plt.clf()
+        #y =
+        x = [ count for count in range(len(hists['values'])) ]
+        xlabels = []
+        mod_val = int(len(hists['values'])/5)
+        for count in range(len(hists['values'])):
+            if count % mod_val == 0:
+                #print(count, frame_number_to_time(count, 1))
+                xlabels.append(frame_number_to_time(count, 1))
+            else:
+                continue
+        print(xlabels)
+        #xlabels.append(frame_number_to_time(len(hists['values']), 1))
+        plt.xticks (x, xlabels, rotation='vertical')
+        plt.locator_params(axis='x', nbins=5)
+        print('plot histogram...')
+        plt.plot(x, hists['values'])
+        print('plotting [DONE]')
+        plt.xlabel('time (s)')
+        plt.ylabel('hist value')
+        plt.title('Video {0}'.format(get_video_name(video_path)))
+        plt.grid(True)
+        #plt.autoscale(enable=True,axis='both',tight=True)
+        plot_save_path = '{0}/{1}.png'.format( w_path, get_short_name(video_path))
+        # if os._exists(plot_save_path)
+        #     shuti
+        plt.savefig(plot_save_path)
+        if show_histogram:
+            plt.show()
 
     print('getting most frequent element... ')
     most = most_common(hists['values'])
@@ -381,6 +399,7 @@ if len(sys.argv) > 1:
             end_af = 0
     print('making videos...')
     print('total videos ' + str(len(episode_list)))
+    print(get_video_path(video_path))
     if not cut_video:
         for episode in episode_list:
             make_video(episode, get_video_path(video_path),int(fps),int(fps/5))

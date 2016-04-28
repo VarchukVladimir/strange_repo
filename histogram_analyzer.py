@@ -37,6 +37,20 @@ def most_common(L):
     # pick the highest-count/earliest item
     return max(groups, key=_auxfun)[0]
 
+def get_distibution(array):
+    distr = {}
+    for i in array:
+        if str(i) in distr.keys():
+            distr[str(i)] =+ distr[str(i)] + 1
+        else:
+            distr[str(i)] = 0
+    return distr
+
+def distr_print (array):
+    for i in array:
+        print('{0}\t{1}'.format(i, array[i]))
+
+
 def get_threshold(val, p):
     return {'min':trunc_val(val - val*p), 'max':int(round(val+val*p))}
 
@@ -59,15 +73,11 @@ def get_histogram_directory(path):
     hist_array = {'fnames':[], 'values':[]}
     for f in sorted(listdir(path)):
         f_count = f_count + 1
-#set limit of files to 500 for testing it tajes a long time
-        # if f_count == 500:
-        #     break
         if f_count % step == 0:
             print(' '.join([str(f_count), 'of', str(total_files), '...']))
         full_name = join(path, f)
         if isfile(full_name):
             hist_val = int(trunc_val(get_image_histogram(cv2.imread(full_name))))
-            #hist_array.append({full_name:hist_val})
             hist_array['fnames'].append(full_name)
             hist_array['values'].append(hist_val)
     print('[DONE]')
@@ -81,10 +91,8 @@ def get_frame_rate(video_path):
 
     if int(major_ver)  < 3 :
         fps = video.get(cv2.cv.CV_CAP_PROP_FPS)
-        #print "Frames per second using video.get(cv2.cv.CV_CAP_PROP_FPS): {0}".format(fps)
     else :
         fps = video.get(cv2.CAP_PROP_FPS)
-        #print "Frames per second using video.get(cv2.CAP_PROP_FPS) : {0}".format(fps)
     video.release()
     return fps
 
@@ -140,8 +148,6 @@ def exec_subproc(cmd, show_info=1):
             print( ' [ERROR] ' + ' '.join(cmd))
             print (out)
             print(err)
-    # for lines in out.splitlines():
-    #     print('\t', lines)
     return p.returncode
 
 def save_histogram_list(hist, save_path):
@@ -212,18 +218,136 @@ def get_video_name(path):
 
 
 def get_cmd_cut(start_frame, end_frame, fps, video_path, episode_count, video_type ):
-    tstart = frame_number_to_time(start_frame, fps)
-    if end_frame - start_frame < fps:
-        tduration = frame_number_to_time(fps, fps)
-    else:
-        tduration = frame_number_to_time(end_frame - start_frame, fps)
+    tstart = frame_number_to_time(start_frame - int(fps/2) if start_frame - int(fps/2) >= 0 else start_frame, fps, 1)
+    # if end_frame - start_frame < fps * 2:
+    #     tduration = frame_number_to_time(fps * 2, fps, 1)
+    # else:
+    tduration = frame_number_to_time(end_frame - start_frame + int(fps/2), fps, 1)
     video_short_name = get_short_name(video_path)
     w_path = get_working_path(video_path)
-    episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.mkv'])
-    cmd = ['ffmpeg', '-i', video_path, '-ss', tstart, '-t', tduration, '-vcodec', 'copy', '-acodec', 'copy',
+    episode_file_name = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_'+video_type+'.mp4'])
+    cmd = ['ffmpeg', '-i', video_path, '-ss', tstart, '-t', tduration, '-y', '-vcodec', 'copy', '-acodec', 'copy',
            episode_file_name]
     return cmd
 
+
+def get_cmd_slow(video_path, episode_count, ratio):
+    video_short_name = get_short_name(video_path)
+    w_path = get_working_path(video_path)
+    episode_file_name_in = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_short.mp4'])
+    episode_file_name_out = '/'.join([w_path, 'video', video_short_name + '_' + '{0:04d}'.format(episode_count) + '_slow.mp4'])
+
+    cmd = ['ffmpeg', '-i', episode_file_name_in, '-filter:v', 'setpts={0}*PTS'.format(int(ratio)), episode_file_name_out]
+    return cmd
+
+
+def find_episodes(histrogars_array, most_common_element, fps, extremum_coefficient):
+    extremum_element = most_common_element * extremum_coefficient
+    last_episode = {'start':0, 'end':0}
+    episodes = []
+
+    for i in range(len(histrogars_array['fnames'])):
+        if last_episode['end'] > i:
+            continue
+        if histrogars_array['values'][i] != 0 and  histrogars_array['values'][i] >= extremum_element:
+
+            if len(episodes) == 6:
+                print('OK!')
+            #print(histrogars_array['values'][i + 10])
+            s = i - int(2 * fps)
+            e = i + int(5 * fps)
+            start_frame = s if s >= 0 else 0
+            end_frame = e if e <= len(histrogars_array['values']) else len(histrogars_array['values'])
+
+            print('before the most common', histrogars_array['values'][start_frame:i])
+            print('start and end', start_frame, i, most_common_element)
+
+            if start_frame != i:
+                print('set normal most before')
+                start_localMFE = most_common( histrogars_array['values'][start_frame:i])
+            else:
+                start_localMFE = most_common_element
+
+            #print( 'local array begin',  histrogars_array['values'][start_frame:i], histrogars_array['values'][start_frame])
+            if i != end_frame:
+                print('set normal most after')
+                end_localMFE = most_common( histrogars_array['values'][i:end_frame] )
+            else:
+                end_localMFE = most_common_element
+            start_pos = -1
+            end_pos = -1
+            for j in range(start_frame, i + 1):
+                print ('direct', j, 'ep count ', len(episodes), histrogars_array['values'][j], end_localMFE + end_localMFE * 1)
+                if histrogars_array['values'][j] > (start_localMFE + start_localMFE * 1):
+                    start_pos = j - 1
+                    break
+            print('before the most common', histrogars_array['values'][i:end_frame])
+            print('start and end', start_frame, i, most_common_element)
+            for j in reversed (range(i, end_frame)):
+                print ('reversed', j, 'ep count ', len(episodes), histrogars_array['values'][j], end_localMFE + end_localMFE * 1)
+                # print('i={0}, j={1} val={2}'.format(i, j, histrogars_array['values'][j]))
+                # print()
+                if histrogars_array['values'][j] > (end_localMFE + end_localMFE * 1):
+                    end_pos = j + 3
+                    break
+            if end_pos < 0 or start_pos < 0:
+                continue
+            else:
+                last_episode = {'start':start_pos, 'end':end_pos}
+                episodes.append(last_episode)
+    return episodes
+
+
+def get_localMFE(hists_values, frame, fps):
+    s = frame - 3 * fps
+    e = frame + 3 * fps
+    start_frame = s if s >= 0 else 0
+    end_frame = e if e >= 0 else 0
+    new_array = hists_values[start_frame:end_frame]
+    #print (start_frame, end_frame, new_array)
+    return most_common(new_array)
+
+
+def check_seq_end_pos(histrogars_array, index, sequ_check, sequ_frames, treshold):
+    end_index = index + sequ_check
+    sequ_frames_count = 0
+    if end_index > len(histrogars_array['values']):
+         end_index = len(histrogars_array['values'])
+    for i in range(index, end_index):
+        if histrogars_array['values'][i] <= treshold:
+            sequ_frames_count = sequ_frames_count + 1
+    if sequ_frames_count >= sequ_frames:
+        return index
+    else:
+        return -1
+
+
+def concatenate_videos(path):
+    print(path + '/video')
+    files = sorted(listdir(path + '/video'))
+    videos_list_file = path + '/video/videos.txt'
+    concat_video = path+'/videos.mp4'
+    f = open(videos_list_file, 'w')
+    print(files)
+    for file in files:
+        str_line = "file '{0}/video/{1}'\n".format(path, file)
+        print(str_line)
+        f.write(str_line)
+    f.close()
+    cmd = ['ffmpeg', '-f', 'concat', '-i', videos_list_file, '-c', 'copy', concat_video]
+    return cmd
+
+def concatenate_dir(path):
+    print(path + '/video')
+    files = sorted(listdir(path + '/video'))
+    videos_list_file = path + '/video/videos.txt'
+    concat_video = path+'/videos.mp4'
+    f = open(videos_list_file, 'w')
+    for file in files:
+        str_line = "file '{0}/video/{1}'\n".format(path, file)
+        f.write(str_line)
+    f.close()
+    cmd = ['ffmpeg', '-f', 'concat', '-i', videos_list_file, '-c', 'copy', concat_video]
 
 
 if len(sys.argv) > 1:
@@ -232,7 +356,13 @@ if len(sys.argv) > 1:
     cut_video = 0
     show_histogram = 0
     make_plot = 0
-    for param in sys.argv:
+    make_slow_copy = 0
+    ratio = 10
+    concat_videos = 0
+    concat_dir = 0
+
+    for i, param in enumerate(sys.argv):
+        print(param)
         if param == '-h':
             load_histogram = 1
         if param == '-c':
@@ -241,12 +371,30 @@ if len(sys.argv) > 1:
             show_histogram = 1
         if param == '-p':
             make_plot = 1
+        if param == '-slow':
+            make_slow_copy = 1
+        if param == '-r':
+            ratio = int(sys.argv[i + 1])
+        if param == '-concat':
+            concat_videos = 1
+        if param == '-cd':
+            concat_dir = 1
+            concat_dir_path = str(sys.argv[i + 1])
 
     print('video ' + video_path)
     video_short_name = get_short_name(video_path)
     w_path = get_working_path(video_path)
+
+    if concat_dir:
+        print('conctenating videos...')
+        cmd = concat_dir(concat_dir_path)
+        exit (exec_subproc(cmd, 1))
+
     af_path = get_af_path_path(video_path)
     print('working path ' + w_path)
+    print('getting frame rate... ')
+    fps = int(round(get_frame_rate(video_path)))
+    print('fps ' + str(fps))
     #if save_path+'histogram.csv'
     images_path = get_jpg_path(video_path)
     if not load_histogram:
@@ -258,6 +406,10 @@ if len(sys.argv) > 1:
         if not os.path.exists(images_path):
             os.makedirs(images_path)
         print('splitting into frames...')
+        if not os.path.exists(video_path):
+            print('File {0} not found'.format(video_path))
+            exit(0)
+
         cmd = ['time', 'ffmpeg', '-i', video_path, images_path+'/image%6d.jpg']
         print(' '.join(cmd))
         exec_subproc(cmd)
@@ -271,12 +423,13 @@ if len(sys.argv) > 1:
     print('create dir for copying image with lightnings...')
     if not os.path.exists(af_path):
         os.makedirs(af_path)
-    print('create dir for copying video fragments...')
-    if not os.path.exists(get_video_path(video_path)):
-        os.makedirs(get_video_path(video_path))
-    else:
-        shutil.rmtree(get_video_path(video_path))
-        os.makedirs(get_video_path(video_path))
+    if cut_video:
+        print('create dir for copying video fragments...')
+        if not os.path.exists(get_video_path(video_path)):
+            os.makedirs(get_video_path(video_path))
+        else:
+            shutil.rmtree(get_video_path(video_path))
+            os.makedirs(get_video_path(video_path))
 
 
     #making plot for distribution for video
@@ -290,7 +443,7 @@ if len(sys.argv) > 1:
         for count in range(len(hists['values'])):
             if count % mod_val == 0:
                 #print(count, frame_number_to_time(count, 1))
-                xlabels.append(frame_number_to_time(count, 1))
+                xlabels.append(frame_number_to_time(count, fps, 1))
             else:
                 continue
         print(xlabels)
@@ -315,11 +468,8 @@ if len(sys.argv) > 1:
     print('getting most frequent element... ')
     most = most_common(hists['values'])
     print('most_common ' + str(most))
-    print('getting frame rate... ')
-    fps = int(round(get_frame_rate(video_path)))
-    print('fps ' + str(fps))
     treshold = get_threshold(most, 2)
-    most = round(most + most * 2)
+    #most = round(most + most * 2)
     most_pow = most * 2
     episode_count = 0
     episode_list = []
@@ -328,55 +478,34 @@ if len(sys.argv) > 1:
     min_frames = int(short_range - short_range * 0.25)
     found = 0
     end_af = 0
+
     print('finding lightnings...')
-    for i in range(len(hists['fnames'])):
-        if i % int(len(hists['fnames'])/10) == 0:
-            print ( ' '.join([str(i), ' of ', str(len(hists['fnames']))]))
-        #detecting beginning of the range with flashes
-        if check_range(hists['values'], i, short_range, most, min_frames, 0) and not found:
-            if hists['values'][i] >= most:
-                start_lf = i
-                found = 1
-        if check_range(hists['values'], i, short_range, most, min_frames, 1) and found:
-            end_lf = i + short_range
-            start_af = int(start_lf - fps * 2 if (start_lf - fps * 2) > 0 else 0)
-            end_af = int(i + fps * 2 if (i + fps * 2) < len(hists['values']) else len(hists['fnames']))
-            print(start_af, start_lf, end_af, end_lf)
-            episode_count = episode_count + 1
-            episode_list.append('e_{eindex}'.format(eindex=episode_count))
-            if cut_video == 1:
-                cmd = get_cmd_cut(start_af+fps*2,end_af + fps*2, fps,video_path,episode_count, 'normal')
-                exec_subproc(cmd)
-                cmd = get_cmd_cut(start_lf,end_lf+ fps*3, fps,video_path,episode_count, 'slow')
-                exec_subproc(cmd)
-            else:
-                for j in range(start_af, end_af):
-                    findex_str = hists['fnames'][j].split('/')[-1].split('.')[0][5:]
-                    if j < start_lf or j > end_lf:
-                        str_prefix = 'af'
-                    else:
-                        new_fname = af_path + '/e_{eindex}_lf_{findex}.jpg'.format(eindex=str(episode_count),
-                                                                                        findex=findex_str)
-                        cmd = ['cp', hists['fnames'][j], new_fname]
-                        exec_subproc(cmd, 0)
-
-                    new_fname = af_path + '/e_{eindex}_af_{findex}.jpg'.format(eindex=str(episode_count),
-                                                                                        findex=findex_str)
-                    cmd = ['cp', hists['fnames'][j], new_fname]
-                    exec_subproc(cmd, 0)
-
-            start_af = 0
-            end_lf = 0
-            start_lf = 0
-            found = 0
-        if i < end_af:
-            continue
-        elif i == end_af:
-            end_af = 0
+    episodes = find_episodes (hists,most,fps,5)
+    print(episodes)
     print('making videos...')
-    print('total videos ' + str(len(episode_list)))
-    print(get_video_path(video_path))
-    if not cut_video:
-        for episode in episode_list:
-            make_video(episode, get_video_path(video_path),int(fps),int(fps/5))
+    print('total videos ' + str(len(episodes)))
+    if cut_video:
+        episode_count = 0
+        for episode in episodes:
+            print(episode)
+
+            cmd = get_cmd_cut( episode['start'] ,episode['end'], fps,video_path,episode_count, 'short')
+            print(cmd)
+            exec_subproc(cmd, 0)
+
+            cmd = get_cmd_cut( episode['start'] - fps * 2 if episode['start'] - fps * 2 > 0 else 0 ,episode['end'] + fps * 2 if episode['end'] + fps < len(hists['values']) else len(hists['values']), fps,video_path,episode_count, 'long')
+            print(cmd)
+            exec_subproc(cmd, 0)
+
+            if make_slow_copy:
+                cmd = get_cmd_slow(video_path, episode_count, ratio)
+                print(cmd)
+                exec_subproc(cmd, 0)
+
+            episode_count = episode_count + 1
+    if concat_videos:
+        print('concatenate videos to single file...')
+        cmd = concatenate_videos(w_path)
+        print( ' '.join(cmd))
+        exec_subproc(cmd, 1)
 

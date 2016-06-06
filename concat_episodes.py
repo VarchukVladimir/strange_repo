@@ -50,6 +50,27 @@ def remove_duplicates(image_path, episode, min_frame, max_frame, type_):
             cmd = ['rm', save_path]
             exec_subproc(cmd, 1)
 
+def get_min_max_frames(file_list, ep_index, s_f):
+
+    max_ep = int(s_f[-1].split('.')[0])
+    min_ep = int(s_f[-1].split('.')[0])
+
+    for f_ in file_list:
+        sf2 = f_.split('_')[2]
+        sf3 = sf2.split('.')[0]
+        # print(sf3)
+        fr_index = int(sf3)
+        ep_index_ = int(f_.split('_')[1])
+        # print fr_index
+        # print f_
+        if ep_index_ == ep_index:
+
+            if fr_index >= max_ep:
+                max_ep = fr_index
+            if fr_index <= min_ep:
+                min_ep = fr_index
+    return {'min':min_ep, 'max':max_ep}
+
 
 def get_directory(path, list_episodes):
     video_dict = {}
@@ -58,20 +79,26 @@ def get_directory(path, list_episodes):
         s_f = f.split('_')
         ep_index = int(s_f[1])
         if ep_index in list_episodes and not ep_index in video_dict.keys():
-            max_ep = int(s_f[-1].split('.')[0])
-            min_ep = int(s_f[-1].split('.')[0])
-            videos = []
-            for f_ in file_list:
-                sf2 = f_.split('_')[2]
-                sf3 = sf2.split('.')[0]
-                fr_index = int(sf3)
-                ep_index_ = int(f_.split('_')[1])
-                if ep_index_ == ep_index:
 
-                    if fr_index >= max_ep:
-                        max_ep = fr_index
-                    if fr_index <= min_ep:
-                        min_ep = fr_index
+            videos = []
+            min_max_ep = get_min_max_frames(file_list, ep_index, s_f)
+            max_ep = min_max_ep['max']
+            min_ep = min_max_ep['min']
+
+
+            # max_ep = int(s_f[-1].split('.')[0])
+            # min_ep = int(s_f[-1].split('.')[0])
+            # for f_ in file_list:
+            #     sf2 = f_.split('_')[2]
+            #     sf3 = sf2.split('.')[0]
+            #     fr_index = int(sf3)
+            #     ep_index_ = int(f_.split('_')[1])
+            #     if ep_index_ == ep_index:
+            #
+            #         if fr_index >= max_ep:
+            #             max_ep = fr_index
+            #         if fr_index <= min_ep:
+            #             min_ep = fr_index
             frame_index = s_f[-1].split('.')[0]
             video_dict[ep_index] = frame_index
             duplicated_image_path = p.join(path, 'af_jpg', 'img_{0:03d}_{1:05d}.jpg'.format(ep_index, min_ep))
@@ -136,6 +163,23 @@ def get_directory_blank(path, blank_path):
             cmd = ['cp', blank_path, path + '/' + blamk_name]
             exec_subproc(cmd, 1)
 
+
+def extend_episode(episode_name, frames_before, frames_after):
+    path = p.dirname(episode_name)
+    file_name = p.basename(episode_name)
+    ep_index = file_name.split('_')[1]
+    s_f = file_name.split('_')
+    #'ep_{0}_{1}_{2:03d}_n.mp4'
+    file_list = sorted(listdir(p.join(path, 'af_jpg')))
+    min_max = get_min_max_frames(file_list, ep_index, s_f)
+    for frame in range( max(0, min_max['min'] - frames_before), min_max['min']):
+        img_from = p.join(path, 'jpg', 'image{0:06d}.jpg'.format(frame))
+        img_to= p.join(path, 'af_jpg', 'img_{0:03d}_{1:05d}.jpg'.format(ep_index, frame))
+        cmd = ['cp', img_from, img_to]
+    for frame in range(min_max['max'], min_max['man'] - frames_after):
+        img_from = p.join(path, 'jpg', 'image{0:06d}.jpg'.format(frame))
+        img_to = p.join(path, 'af_jpg', 'img_{0:03d}_{1:05d}.jpg'.format(ep_index, frame))
+        cmd = ['cp', img_from, img_to]
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--path", required=True,

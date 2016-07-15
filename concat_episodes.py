@@ -1,7 +1,11 @@
-from os import listdir
+from os import listdir, close
 from utils import exec_subproc
 import argparse
 from os import path as p
+from os import remove
+import time
+import utils
+import sys
 
 fps = 60
 
@@ -10,15 +14,16 @@ def get_conctac_cmd(path, ep_index, frame_index, video_type):
     jpg_pattern = p.join(path, 'af_jpg','img_{0:03d}_%05d.jpg'.format(int(ep_index)))
 
     if video_type == 0:
-        episode_name = p.join(path, 'ep_{0}_{1}_{2:03d}_n.mp4'.format(path.split(p.sep)[-2], p.basename(),
+        episode_name = p.join(path, 'ep_{0}_{1}_{2:03d}_n.mp4'.format(path.split(p.sep)[-2], p.basename(path),
                                                                  int(ep_index)))
-        cmd = ['ffmpeg', '-r', '60', '-y', '-start_number', '{0:05d}'.format(int(frame_index)), '-i', jpg_pattern,
-               '-c:v', 'libx264', '-r', '60', episode_name]
+        cmd = ['ffmpeg', '-r', str(fps), '-y', '-start_number', '{0:05d}'.format(int(frame_index)), '-i', jpg_pattern,
+               '-c:v', 'libx264', '-r', str(fps), episode_name]
     else:
-        episode_name = p.join(path, 'ep_{0}_{1}_{2:03d}_s.mp4'.format(path.split(p.sep)[-2], p.basename(),
+        episode_name = p.join(path, 'ep_{0}_{1}_{2:03d}_s.mp4'.format(path.split(p.sep)[-2], p.basename(path),
                                                                  int(ep_index)))
-        cmd = ['ffmpeg', '-r', '6', '-y', '-start_number', '{0:05d}'.format(int(frame_index)), '-i', jpg_pattern,
-               '-c:v', 'libx264', '-r', '60', episode_name]
+        cmd = ['ffmpeg', '-r', str(int(fps/args['slow'])), '-y', '-start_number', '{0:05d}'.format(int(frame_index)), '-i', jpg_pattern,
+               '-c:v', 'libx264', '-r', str(fps), episode_name]
+
     return cmd
 
 
@@ -29,12 +34,12 @@ def duplicate_images(image_path, episode, min_frame, max_frame, type_):
         for i in range(max(0, min_frame - fps * args['time']), min_frame):
             save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
             cmd = ['cp', image_path, save_path]
-            exec_subproc(cmd, 1)
+            exec_subproc(cmd, 0)
     else:
         for i in range(max_frame + 1, max_frame + int(fps / 10 * args['time'])):
             save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
             cmd = ['cp', image_path, save_path]
-            exec_subproc(cmd, 1)
+            exec_subproc(cmd, 0)
 
 
 def remove_duplicates(image_path, episode, min_frame, max_frame, type_):
@@ -43,12 +48,13 @@ def remove_duplicates(image_path, episode, min_frame, max_frame, type_):
         for i in range(max(0, min_frame - fps * args['time']), min_frame):
             save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
             cmd = ['rm', save_path]
-            exec_subproc(cmd, 1)
+            exec_subproc(cmd, 0)
     else:
         for i in range(max_frame + 1, max_frame + int(fps / 10 * args['time'])):
-            save_path = p.join(path + 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
+            save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
+            # print(save_path)
             cmd = ['rm', save_path]
-            exec_subproc(cmd, 1)
+            exec_subproc(cmd, 0)
 
 def get_min_max_frames(file_list, ep_index, s_f):
 
@@ -84,35 +90,19 @@ def get_directory(path, list_episodes):
             min_max_ep = get_min_max_frames(file_list, ep_index, s_f)
             max_ep = min_max_ep['max']
             min_ep = min_max_ep['min']
-
-
-            # max_ep = int(s_f[-1].split('.')[0])
-            # min_ep = int(s_f[-1].split('.')[0])
-            # for f_ in file_list:
-            #     sf2 = f_.split('_')[2]
-            #     sf3 = sf2.split('.')[0]
-            #     fr_index = int(sf3)
-            #     ep_index_ = int(f_.split('_')[1])
-            #     if ep_index_ == ep_index:
-            #
-            #         if fr_index >= max_ep:
-            #             max_ep = fr_index
-            #         if fr_index <= min_ep:
-            #             min_ep = fr_index
             frame_index = s_f[-1].split('.')[0]
             video_dict[ep_index] = frame_index
             duplicated_image_path = p.join(path, 'af_jpg', 'img_{0:03d}_{1:05d}.jpg'.format(ep_index, min_ep))
             duplicate_images(duplicated_image_path, ep_index, min_ep, max_ep, 0)
             cmd = get_conctac_cmd(path, ep_index, max(0, min_ep - fps * 2), 0)
             videos.append(cmd[-1])
-            print (cmd)
             exec_subproc(cmd, 1)
             remove_duplicates(duplicated_image_path, ep_index, min_ep, max_ep, 0)
 
             duplicated_image_path = p.join(path, 'af_jpg', 'img_{0:03d}_{1:05d}.jpg'.format(ep_index, max_ep))
             duplicate_images(duplicated_image_path, ep_index, min_ep, max_ep, 1)
             cmd = get_conctac_cmd(path, ep_index, min_ep, 1)
-            print (cmd)
+
             exec_subproc(cmd, 1)
             videos.append(cmd[-1])
             remove_duplicates(duplicated_image_path, ep_index, min_ep, max_ep, 1)
@@ -123,23 +113,33 @@ def get_directory(path, list_episodes):
 def join_couple_videos(videos):
     video_path = p.join(p.dirname(videos[0]),
                               '_'.join(p.basename(videos[0]).split('_')[:-1] + ['j.mp4']))
-    cmd = ['ffmpeg', '-f', 'concat', '-i'] + videos + ['-c', 'copy', video_path]
-    exec_subproc(cmd, 1)
+    list_file = p.join(p.dirname(videos[0]), 'list.txt')
+    f = open(list_file, 'w')
+    for file in videos:
+        str_line = "file '{0}'\n".format( p.basename(file))
+        f.write(str_line)
+    f.close()
+    cmd = ['ffmpeg', '-f', 'concat', '-y', '-i', list_file, '-c', 'copy', video_path]
 
+    exec_subproc(cmd, 1)
+    remove(list_file)
 
 def concatenate_videos(path):
-    print(path)
+    # print(path)
     files = sorted(listdir(path))
     videos_list_file = p.join(path, 'videos.txt')
     concat_video = p.join(path, 'videos.mp4')
     f = open(videos_list_file, 'w')
-    print(files)
+    # print(files)
     for file in files:
-        str_line = "file '{0}'\n".format(file)
-        print(str_line)
+        if file.endswith('.mp4'):
+            str_line = "file '{0}'\n".format(file)
+        else:
+            continue
+        # print(str_line)
         f.write(str_line)
     f.close()
-    cmd = ['ffmpeg', '-f', 'concat', '-i', videos_list_file, '-c', 'copy', concat_video]
+    cmd = ['ffmpeg', '-f', 'concat', '-y', '-i', videos_list_file, '-c', 'copy', concat_video]
     return cmd
 
 
@@ -157,7 +157,7 @@ def get_directory_blank(path, blank_path):
         s_f = f.split('_')
         ep_index = '_'.join(s_f[:-1])
         if not ep_index in video_dict.keys():
-            print (f)
+            # print (f)
             blamk_name = ep_index + '_t.jpg'
             video_dict[ep_index] = blamk_name
             cmd = ['cp', blank_path, path + '/' + blamk_name]
@@ -181,6 +181,17 @@ def extend_episode(episode_name, frames_before, frames_after):
         img_to = p.join(path, 'af_jpg', 'img_{0:03d}_{1:05d}.jpg'.format(ep_index, frame))
         cmd = ['cp', img_from, img_to]
 
+sys.stdout = utils.Unbuffered(sys.stdout)
+cmd = ['echo', 'teset']
+exec_subproc(cmd,1)
+# print 'Hello'
+#
+# print "print"
+# print ("test"),
+# # sys.stdout.flush()
+# time.sleep(2)
+# print 'OK'
+# exit(0)
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--path", required=True,
                 help="Path to the directory with preprocessed imgaes, videos, video lists")
@@ -192,13 +203,17 @@ ap.add_argument("-t", "--time", type=int, default=2,
                 help="Freeze time before and after episode (Default 2 sec)")
 ap.add_argument("-c", "--concatenate", action='store_true',
                 help="Concatenate all videos in directory into single file")
-
+ap.add_argument("-s", "--slow", type=float, default=10,
+                help="Slow coefficient")
+ap.add_argument("-f", "--fps", type=int, default=60, help="fps of input video")
 args = vars(ap.parse_args())
+# timer = utils.TimeCounter()
+fps = args['fps']
 
 
 if args['rebuild']:
     get_directory(args['path'], read_episodes_list(args['path']))
 elif args['concatenate']:
-    concatenate_videos(args['path'])
+    exec_subproc(concatenate_videos(args['path']))
 else:
     ap.print_help()

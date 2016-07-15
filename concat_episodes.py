@@ -182,8 +182,7 @@ def extend_episode(episode_name, frames_before, frames_after):
         cmd = ['cp', img_from, img_to]
 
 sys.stdout = utils.Unbuffered(sys.stdout)
-cmd = ['echo', 'teset']
-exec_subproc(cmd,1)
+
 # print 'Hello'
 #
 # print "print"

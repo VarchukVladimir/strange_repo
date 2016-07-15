@@ -1,17 +1,16 @@
+import json
+
 __author__ = 'Volodymyr Varchuk'
 
 
 
-import cv2
 import itertools
 import operator
 import sys
-import os
-import subprocess
 import shutil
-#import numpy as np
 from matplotlib import pyplot as plt
 import numpy
+
 
 from os import listdir
 from os.path import isfile, join
@@ -42,6 +41,7 @@ slow_from_frame = 0
 log_only = 0
 make_from_farames = 0
 batch_execute = 0
+load_episodes = 0
 
 
 
@@ -112,18 +112,6 @@ def get_histogram_directory(path):
     print('[DONE]')
     return hist_array
 
-
-def get_frame_rate(video_path):
-    video = cv2.VideoCapture(video_path)
-    # Find OpenCV version
-    (major_ver, minor_ver, subminor_ver) = (cv2.__version__).split('.')
-
-    if int(major_ver)  < 3 :
-        fps = video.get(cv2.cv.CV_CAP_PROP_FPS)
-    else :
-        fps = video.get(cv2.CAP_PROP_FPS)
-    video.release()
-    return fps
 
 def check_if_in_range(treshold, value):
     if value >= treshold['min'] and value <= treshold['max']:
@@ -207,35 +195,6 @@ def frame_number_to_time(frame_number, fps, precision = 0):
     return time_str
 
 
-
-def get_working_path(path):
-    return '/'.join(path.split('/')[:-1] + [get_short_name(path)])
-
-
-def get_jpg_path(path):
-    video_name = get_video_name(path).split('.')[0]
-    tmp_path = '/tmp/'+video_name
-    if not os.path.exists(tmp_path):
-        os.makedirs(tmp_path)
-    return tmp_path + '/jpg'
-
-
-def get_af_path_path(path):
-    return '/'.join([get_working_path(path)] + ['af_jpg'])
-
-
-def get_video_path(path):
-    return '/'.join([get_working_path(path)] + ['video'])
-
-
-def get_short_name(path):
-    return path.split('/')[-1].split('.')[0]
-
-
-def get_video_name(path):
-    return path.split('/')[-1]
-
-
 def get_episode_file_name(video_path, episode_count, video_type):
     w_path = get_working_path(video_path)
     video_short_name = get_short_name(video_path)
@@ -269,7 +228,7 @@ def find_episodes(histrogars_array, most_common_element, fps, extremum_coefficie
             print ('extremum_element {0}'.format(extremum_element))
         if last_episode['end'] > i:
             continue
-        if histrogars_array['values'][i] != 0 and  histrogars_array['values'][i] >= extremum_element * 2:
+        if histrogars_array['values'][i] != 0 and  histrogars_array['values'][i] >= extremum_element:
             s = i - int(1 * fps)
             e = i + int(2 * fps)
             start_frame = s if s >= 0 else 0
@@ -300,7 +259,7 @@ def find_episodes(histrogars_array, most_common_element, fps, extremum_coefficie
                 continue
             else:
                 last_episode = {'start':start_pos, 'end':end_pos}
-                episodes.append(last_episode)
+                episodes.append({'{0:03d}'.format(len(episodes)):last_episode})
                 print(last_episode, extremum_element)
     return episodes
 
@@ -384,6 +343,7 @@ def copy_frames(episode, video_path, filelist, episode_count):
     af_path = get_af_path_path(video_path)
     font_size = 16
     font = ImageFont.truetype("/usr/share/fonts/truetype/ttf-dejavu/DejaVuSerif.ttf", font_size)
+    fps = get_frame_rate(video_path)
 
     for i in range(episode['start'] - 2, episode['end'] + 1):
         #print(filelist[i])
@@ -398,31 +358,30 @@ def copy_frames(episode, video_path, filelist, episode_count):
     logstr = '\n*************************{0}*************************\n'.format(episode_count)
     jpg_pattern = af_path +'/img_{0:03d}_%05d.jpg'.format(episode_count)
     episode_video_name = '{0}/{1}_{2:04d}_{3}.{4}'.format(get_video_path(video_path), video_name,episode_count, type_short_video,file_type_episode)
-    cmd = ['ffmpeg', '-r', '60', '-y', '-start_number', '{0:05d}'.format(episode['start'] - 2),  '-i', jpg_pattern, '-c:v', 'libx264', '-r', '60', episode_video_name]
+    cmd = ['ffmpeg', '-r', str(int(fps)), '-y', '-start_number', '{0:05d}'.format(episode['start'] - 2),  '-i', jpg_pattern, '-c:v', 'libx264', '-r', str(int(fps)), episode_video_name]
 
     loginfo = ' '.join(cmd)
     logstr = loginfo + '\n'
-    print(loginfo)
     exec_subproc(cmd)
 
     if make_slow_copy:
         cmd_slow = get_cmd_slow(video_path,episode_count,10)
         loginfo = ' '.join(cmd_slow)
-        print(loginfo)
         logstr = logstr + loginfo + '\n'
         exec_subproc(cmd_slow)
 
     if slow_from_frame:
         episode_video_name = '{0}/{1}_{2:04d}_{3}_frames.{4}'.format(get_video_path(video_path), video_name,episode_count, type_slow_video,file_type_episode)
-        cmd = ['ffmpeg', '-r', '6', '-y', '-start_number', '{0:05d}'.format(episode['start'] - 2),  '-i', jpg_pattern, '-c:v', 'libx264', '-r', '60', episode_video_name]
+        cmd = ['ffmpeg', '-r', str(int(fps)), '-y', '-start_number', '{0:05d}'.format(episode['start'] - 2),  '-i', jpg_pattern, '-c:v', 'libx264', '-r', str(int(fps)), episode_video_name]
         loginfo = ' '.join(cmd)
-        print(loginfo)
         logstr = logstr + loginfo + '\n'
         exec_subproc(cmd)
     f.write(logstr)
     f.close()
 
     return 0
+timer = TimeCounter()
+sys.stdout = Unbuffered(sys.stdout)
 
 if len(sys.argv) > 1:
     video_path = sys.argv[1]
@@ -480,6 +439,9 @@ if len(sys.argv) > 1:
         #batch execute
         if param == '-b':
             batch_name = sys.argv[i + 1]
+        #load episodes
+        if param == '-le':
+            load_episodes = 1
 
     print('video ' + video_path)
     video_short_name = get_short_name(video_path)
@@ -518,12 +480,13 @@ if len(sys.argv) > 1:
             if not os.path.exists(video_path):
                 print('File {0} not found'.format(video_path))
                 exit(0)
-
             cmd = ['time', 'ffmpeg', '-i', video_path ,'-qscale:v', '2', images_path+'/image%6d.jpg']
-            print(' '.join(cmd))
             exec_subproc(cmd)
+
             print('getting histograms for frames...')
+            timer.start_count()
             hists =get_histogram_directory(images_path)
+            timer.end_count()
             print('saving histogram...')
             save_histogram_list(hists, w_path)
     else:
@@ -539,6 +502,7 @@ if len(sys.argv) > 1:
 
     #making plot for distribution for video
     if make_plot:
+        timer.start_count()
         print('creating plot..')
         plt.clf()
         x = [ count for count in range(len(hists['values'])) ]
@@ -567,6 +531,7 @@ if len(sys.argv) > 1:
         plt.savefig(plot_save_path)
         if show_histogram:
             plt.show()
+        timer.end_count()
 
     print('getting most frequent element... ')
     most = most_common(hists['values'])
@@ -583,13 +548,27 @@ if len(sys.argv) > 1:
     end_af = 0
 
     print('finding lightnings...')
-    episodes = find_episodes (hists,most,fps,1.5)
+    timer.start_count()
+    if load_episodes == 1:
+        episodes_path = p.join(w_path, 'episodes_list.txt')
+        print('epath' ,episodes_path)
+        e_file = open(episodes_path, 'r')
+        episodes = json.load(e_file)
+    else:
+        episodes = find_episodes (hists,most,fps,1.5)
+        print(episodes)
+        with open(p.join(w_path, 'episodes_list.txt'), 'w') as ofile:
+            json.dump(episodes, ofile)
+        ofile.close()
+    timer.end_count()
+
     print('making videos...')
     print('total videos ' + str(len(episodes)))
     if cut_video:
         episode_count = 0
         f = open(w_path+'/log.csv' ,'w')
-        for episode in episodes:
+        for episode_key in episodes:
+            episode = episode_key.itervalues().next()
             str_text = '\n'
             print(episode, frame_number_to_time(episode['start'], fps, 1), frame_number_to_time(episode['end'], fps, 1))
             str_text = str_text + ' #### '.join([str(episode_count), str(episode['start']), str(episode['end']), frame_number_to_time(episode['start'], fps, 1), frame_number_to_time(episode['end'], fps, 1), '\n\t'])
@@ -621,7 +600,8 @@ if len(sys.argv) > 1:
             episode_count = episode_count + 1
         f.close()
     if make_from_farames:
-        for count, episode in enumerate(episodes):
+        for count, episode_key in enumerate(episodes):
+            episode = episode_key.itervalues().next()
             copy_frames(episode,video_path,hists['fnames'],count)
 
     if concat_videos:
@@ -629,4 +609,3 @@ if len(sys.argv) > 1:
         cmd = concatenate_videos(w_path)
         print( ' '.join(cmd))
         exec_subproc(cmd, 1)
-

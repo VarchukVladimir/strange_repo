@@ -10,7 +10,7 @@ def def_colored(text, color):
     return text
 
 try:
-    from termcolor1 import colored
+    from termcolor import colored
     safe_colored = colored
 except ImportError:
     safe_colored = def_colored

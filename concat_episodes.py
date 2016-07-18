@@ -10,7 +10,6 @@ import sys
 fps = 60
 
 def get_conctac_cmd(path, ep_index, frame_index, video_type):
-    fps = 60
     jpg_pattern = p.join(path, 'af_jpg','img_{0:03d}_%05d.jpg'.format(int(ep_index)))
 
     if video_type == 0:
@@ -31,12 +30,15 @@ def duplicate_images(image_path, episode, min_frame, max_frame, type_):
     path = p.dirname(image_path)
     #path = '/'.join(image_path.split('/')[:-1])
     if type_ == 0:
+        # freeze video before
         for i in range(max(0, min_frame - fps * args['time']), min_frame):
             save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
             cmd = ['cp', image_path, save_path]
             exec_subproc(cmd, 0)
+
     else:
-        for i in range(max_frame + 1, max_frame + int(fps / 10 * args['time'])):
+        #freeze video after
+        for i in range(max_frame + 1, max_frame + int(fps / args['slow'] * args['time'])):
             save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
             cmd = ['cp', image_path, save_path]
             exec_subproc(cmd, 0)
@@ -50,7 +52,7 @@ def remove_duplicates(image_path, episode, min_frame, max_frame, type_):
             cmd = ['rm', save_path]
             exec_subproc(cmd, 0)
     else:
-        for i in range(max_frame + 1, max_frame + int(fps / 10 * args['time'])):
+        for i in range(max_frame + 1, max_frame + int(fps / args['slow'] * args['time'])):
             save_path = p.join(path, 'img_{0:03d}_{1:05d}.jpg'.format(episode, int(i)))
             # print(save_path)
             cmd = ['rm', save_path]
@@ -128,11 +130,11 @@ def concatenate_videos(path):
     # print(path)
     files = sorted(listdir(path))
     videos_list_file = p.join(path, 'videos.txt')
-    concat_video = p.join(path, 'videos.mp4')
+    concat_video = p.join(path, args['output'])
     f = open(videos_list_file, 'w')
     # print(files)
     for file in files:
-        if file.endswith('.mp4'):
+        if file.endswith('.mp4') or file.endswith('.MOV'):
             str_line = "file '{0}'\n".format(file)
         else:
             continue
@@ -205,9 +207,13 @@ ap.add_argument("-c", "--concatenate", action='store_true',
 ap.add_argument("-s", "--slow", type=float, default=10,
                 help="Slow coefficient")
 ap.add_argument("-f", "--fps", type=int, default=60, help="fps of input video")
+ap.add_argument("-o", "--output", default="videos.mp4",
+                help="Output file name")
+
 args = vars(ap.parse_args())
 # timer = utils.TimeCounter()
 fps = args['fps']
+print (fps)
 
 
 if args['rebuild']:

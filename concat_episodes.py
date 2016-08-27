@@ -7,8 +7,6 @@ import time
 import utils
 import sys
 
-fps = 60
-
 def get_conctac_cmd(path, ep_index, frame_index, video_type):
     jpg_pattern = p.join(path, 'af_jpg','img_{0:03d}_%05d.jpg'.format(int(ep_index)))
 

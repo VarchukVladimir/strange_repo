@@ -555,7 +555,7 @@ if len(sys.argv) > 1:
         e_file = open(episodes_path, 'r')
         episodes = json.load(e_file)
     else:
-        episodes = find_episodes (hists,most,fps,1.5)
+        episodes = find_episodes (hists,most,fps,2)
         print(episodes)
         with open(p.join(w_path, 'episodes_list.txt'), 'w') as ofile:
             json.dump(episodes, ofile)
